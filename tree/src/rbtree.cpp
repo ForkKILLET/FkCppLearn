@@ -4,6 +4,8 @@
 #include <memory>
 #include <iostream>
 #include <ostream>
+#include <stack>
+#include <utility>
 #include <vector>
 #include <format>
 
@@ -321,7 +323,7 @@ public:
 
     const size_t& size = _size;
 
-    bool empty() const {
+    inline bool empty() const {
         return _size == 0;
     }
 
@@ -353,7 +355,7 @@ public:
         });
     }
 
-    V operator[](const K& key) const {
+    const V& operator[](const K& key) const {
         return get(key);
     }
 
@@ -376,6 +378,152 @@ public:
     void print(std::ostream &out = std::cout) const {
         _print_node(out, root, 0);
     }
+
+    template<typename VI, typename Derefer>
+    struct IteratorBase {
+    private:
+        std::stack<PNode> stack;
+        Derefer deref {};
+
+        void push_lefts(PNode node) {
+            while (node) {
+                stack.push(node);
+                node = node->left;
+            }
+        }
+
+    public:
+        IteratorBase(PNode root) {
+            push_lefts(root);
+        }
+
+        IteratorBase& operator++() {
+            PNode top = stack.top();
+            stack.pop();
+            push_lefts(top->right);
+            return *this;
+        }
+
+        const VI operator*() const {
+            return deref(stack.top());
+        }
+
+        VI operator*() {
+            return deref(stack.top());
+        }
+
+        operator bool() {
+            return ! stack.empty();
+        }
+
+        bool operator==(const IteratorBase& that) const {
+            if (stack.empty() && that.stack.empty())
+                return true;
+            if (stack.size() != that.stack.size())
+                return false;
+            return stack.top() == that.stack.top();
+        }
+    };
+
+    static constexpr auto ValueDerefer = [](PNode node) -> V& {
+        return node->value;
+    };
+    using Iterator = IteratorBase<V&, decltype(ValueDerefer)>;
+    Iterator begin() {
+        if (empty()) return end();
+        return { root };
+    }
+    inline Iterator end() const {
+        return { nullptr };
+    }
+
+    static constexpr auto ConstValueDerefer = [](PNode node) -> const V& {
+        return node->value;
+    };
+    using ConstIterator = IteratorBase<const V&, decltype(ConstValueDerefer)>;
+    ConstIterator cbegin() const {
+        if (empty()) return cend();
+        return { root };
+    }
+    inline ConstIterator cend() const {
+        return { nullptr };
+    }
+
+    using Entry = std::pair<const K&, V&>;
+    static constexpr auto EntryDerefer = [](PNode node) -> Entry {
+        return { node->key, node->value };
+    };
+    using EntryIterator = IteratorBase<Entry, decltype(EntryDerefer)>;
+    EntryIterator entry_begin() {
+        if (empty()) return entry_end();
+        return { root };
+    }
+    inline EntryIterator entry_end() const {
+        return { nullptr };
+    }
+
+    using ConstEntry = std::pair<const K&, const V&>;
+    static constexpr auto ConstEntryDerefer = [](PNode node) -> ConstEntry {
+        return { node->key, node->value };
+    };
+    using ConstEntryIterator = IteratorBase<ConstEntry, decltype(ConstEntryDerefer)>;
+    ConstEntryIterator entry_cbegin() const {
+        if (empty()) return entry_cend();
+        return { root };
+    }
+    inline ConstEntryIterator entry_cend() const {
+        return { nullptr };
+    }
+
+    struct Entries {
+        TreeMap& tree;
+
+        Entries(TreeMap& tree) : tree(tree) {}
+
+        EntryIterator begin() {
+            return tree.entry_begin();
+        }
+        EntryIterator end() const {
+            return tree.entry_end();
+        }
+        ConstEntryIterator cbegin() const {
+            return tree.entry_cbegin();
+        }
+        ConstEntryIterator cend() const {
+            return tree.entry_cend();
+        }
+    } entries { *this };
+
+    static constexpr auto KeyDerefer = [](PNode node) -> const K& {
+        return node->key;
+    };
+    using KeyIterator = IteratorBase<const K&, decltype(KeyDerefer)>;
+    KeyIterator key_begin() const {
+        if (empty()) return key_end();
+        return { root };
+    }
+    inline KeyIterator key_end() const {
+        return { nullptr };
+    }
+
+    struct Keys {
+        TreeMap& tree;
+
+        Keys(TreeMap& tree) : tree(tree) {}
+
+        KeyIterator begin() const {
+            return tree.key_begin();
+        }
+        KeyIterator end() const {
+            return tree.key_end();
+        }
+        KeyIterator cbegin() const {
+            return tree.key_begin();
+        }
+        KeyIterator cend() const {
+            return tree.key_end();
+        }
+    } keys { *this };
 };
 
 template <typename K, typename V>
@@ -390,14 +538,21 @@ int main() {
 
     for (int key : keys) {
         tree[key] = key * key;
-        tree.print();
     }
     
     tree.remove(8);
     tree.print();
 
     std::cout << "7 * 7 = " << tree[7] << std::endl;
-    std::cout << "9 * 9 = " << tree.get(9) << std::endl;
+
+    for (auto [ key, value ] : tree.entries) {
+        std::cout << key << " : " << value << std::endl;
+        value = value * 2;
+    }
+
+    for (const auto key : tree.keys) {
+        std::cout << key << " : " << tree[key] << std::endl;
+    }
 
     return 0;
 }
